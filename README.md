@@ -4,7 +4,7 @@ This code belongs to the paper 'Telegrapher's Generative Model via Kac Flows' av
 It contains implementations for the experiments of Section 7. For questions or bug reports contact chemseddine@math.tu-berlin.de.
 
 ## References
-[1] R. Duong, J. Chemseddine, P. Friz, G. Steidl.
+[1] R. Duong, J. Chemseddine, P. K. Friz, G. Steidl.
 Telegrapher's Generative Model via Kac Flows.
 
 ## CITATION
