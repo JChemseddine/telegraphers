@@ -3,9 +3,6 @@ This code belongs to the paper 'Telegrapher's Generative Model via Kac Flows' av
 
 It contains implementations for the experiments of Section 7. For questions or bug reports contact chemseddine@math.tu-berlin.de.
 
-## REQUIREMENTS
-The code requires several Python packages. The specific requirements are given in requirements.txt
-
 ## References
 [1] R. Duong, J. Chemseddine, P. Friz, G. Steidl.
 Telegrapher's Generative Model via Kac Flows.
