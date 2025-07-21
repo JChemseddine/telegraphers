@@ -1,0 +1,20 @@
+# Telegrapher's Generative Model via Kac Flows
+This code belongs to the paper 'Telegrapher's Generative Model via Kac Flows' available at https://arxiv.org/abs/2403.18705 [1]. Please cite the paper, if you use our code. 
+
+It contains implementations for the experiments of Section 8. For questions or bug reports contact chemseddine@math.tu-berlin.de or hagemann@math.tu-berlin.de.
+
+## REQUIREMENTS
+The code requires several Python packages. The specific requirements are given in requirements.txt
+
+## References
+[1] R. Duong, J. Chemseddine, P. Friz, G. Steidl.
+Telegrapher's Generative Model via Kac Flows.
+
+## CITATION
+```python
+@article{DCFS2025,
+      title={Telegrapher's Generative Model via Kac Flows}, 
+      author={Richard Duong, Jannis Chemseddine, Peter K. Friz and Gabriele Steidl},
+      journal={arXiv preprint arXiv:2403.18705}
+}
+```
