@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument('--eval_interval', type=int, default=5_000)
     parser.add_argument('--eval_interval_fid', type=int, default=10_000)
     parser.add_argument('--num_samples', type=int, default=100)
-    parser.add_argument('--fid_num_real', type=int, default=2_000)
+    parser.add_argument('--fid_num_real', type=int, default=2_000) #50k for eval
     parser.add_argument('--fid_image_size', type=int, default=75)
     parser.add_argument('--save_dir', type=str, default='results_fm_cifar')
     parser.add_argument('--device', type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'))
