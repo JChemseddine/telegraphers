@@ -15,4 +15,4 @@ Telegrapher's Generative Model via Kac Flows.
       journal={arXiv preprint arXiv:2506.20641}
 }
 ```
-(Note this GitHub Repository is still under construction!)
+
