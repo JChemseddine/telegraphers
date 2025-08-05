@@ -239,7 +239,7 @@ def main():
 
         with torch.no_grad():
             # Compute velocity using g(t)
-            velo = get_dg(t.squeeze(1), args.T, args.g_schedule)*compute_velocity((xt - f * x0), t_for_noise_proc.unsqueeze(1), args.a, args.c, epsilon=1e-4)
+            velo = get_dg(t, args.T, args.g_schedule)*compute_velocity((xt - f * x0), t_for_noise_proc.unsqueeze(1), args.a, args.c, epsilon=1e-4)
 
         # Model is conditioned on original time t
         pred = unet(xt.view(B, 3, _IMG_SIZE, _IMG_SIZE), t.squeeze(1)).view(B, -1)
