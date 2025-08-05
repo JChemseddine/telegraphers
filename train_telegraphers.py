@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import os
 import argparse
 import torch
@@ -26,12 +25,6 @@ def get_f(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
         return 1 - t / T
     elif name == 'exp':
         return torch.exp(-t)
-    elif name == 'cos':
-        return torch.cos(0.5 * torch.pi * t / T)
-    elif name == 'lambda':
-        s, ω = -2, torch.pi / (2 * T)
-        A = torch.exp(2 / s)
-        return (A * torch.cos(ω * t)) / (A * torch.cos(ω * t) + torch.sin(ω * t))
     else:
         raise ValueError(f"Unknown schedule: {name}")
 
@@ -40,16 +33,28 @@ def get_df(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
         return -1.0 / T * torch.ones_like(t)
     elif name == 'exp':
         return -torch.exp(-t)
-    elif name == 'cos':
-        return -0.5 * torch.pi / T * torch.sin(0.5 * torch.pi * t / T)
-    elif name == 'lambda':
-        s, ω = -2, torch.pi / (2 * T)
-        A = torch.exp(2 / s)
-        num = -ω * A * (torch.sin(ω * t)**2 + torch.cos(ω * t)**2)
-        denom = (torch.sin(ω * t) + A * torch.cos(ω * t))**2
-        return num / denom
     else:
         raise ValueError(f"Unknown schedule: {name}")
+
+def get_g(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+    """Computes the time reparameterization g(t) for the noise process."""
+    if name == 't':
+        return t
+    elif name == 't2':
+        # Normalized such that g(T) = T
+        return T * (t / T)**2
+    else:
+        raise ValueError(f"Unknown g schedule: {name}")
+
+def get_dg(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+    """Computes the time reparameterization g(t) for the noise process."""
+    if name == 't':
+        return 1
+    elif name == 't2':
+        # Normalized such that g(T) = T
+        return 2*t/T
+    else:
+        raise ValueError(f"Unknown g schedule: {name}")
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Radial Kac–CDF model on CIFAR-10")
@@ -61,11 +66,14 @@ def get_args():
     parser.add_argument('--c', type=float, default=3.0)
     parser.add_argument('--T', type=float, default=1.0)
     parser.add_argument('--schedule', type=str, default='linear',
-                        choices=['linear', 'exp', 'cos', 'lambda'])
+                        choices=['linear', 'exp', 'cos', 'lambda'], help="Schedule f(t) for the signal.")
+    parser.add_argument('--g_schedule', type=str, default='t',
+                        choices=['t', 't2'], help="Schedule g(t) for the noise process time. 't' is g(t)=t, 't2' is g(t)=t^2.")
     parser.add_argument('--eval_interval', type=int, default=5_000)
     parser.add_argument('--eval_interval_fid', type=int, default=10_000)
     parser.add_argument('--num_samples', type=int, default=100)
-    parser.add_argument('--fid_num_real', type=int, default=2_000) #50k for eval
+    parser.add_argument('--fid_num_real', type=int, default=2_000, help="Number of real images for periodic FID eval.")
+    parser.add_argument('--final_fid_num_samples', type=int, default=50_000, help="Number of samples for final FID evaluation.")
     parser.add_argument('--fid_image_size', type=int, default=75)
     parser.add_argument('--save_dir', type=str, default='results_kac_cifar10')
     parser.add_argument('--device', type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'))
@@ -139,7 +147,7 @@ def sample_ode(model, x_T, T, num_steps, device, method='euler', max_batch=500):
     t_vals = torch.linspace(T, 0., num_steps, device=device)
     traj = []
     with torch.no_grad():
-        for chunk in x_T.split(max_batch, dim=0):
+        for chunk in tqdm(x_T.split(max_batch, dim=0), desc="Sampling"):
             sol = odeint(ode_fn, chunk, t_vals, method=method)
             traj.append(sol)
     return torch.cat(traj, dim=1)
@@ -166,27 +174,31 @@ def main():
     ])
     train_ds = datasets.CIFAR10('./data', train=True, download=True, transform=transform)
     loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=1, drop_last=True)
-    fid_loader = DataLoader(train_ds, batch_size=args.batch_size * 4, shuffle=False, num_workers=1)
 
     device = args.device
     dim = _IMG_SIZE * _IMG_SIZE * 3
 
-    real_images = []
+    # --- Setup for periodic FID during training ---
+    fid_loader = DataLoader(train_ds, batch_size=args.batch_size * 4, shuffle=False, num_workers=1)
+    real_images_periodic = []
     for imgs, _ in fid_loader:
-        real_images.append(to_uint8_rgb(imgs.to(device), args.fid_image_size))
-        if sum(x.size(0) for x in real_images) >= args.fid_num_real:
+        real_images_periodic.append(to_uint8_rgb(imgs.to(device), args.fid_image_size))
+        if sum(x.size(0) for x in real_images_periodic) >= args.fid_num_real:
             break
-    real_images = torch.cat(real_images)[:args.fid_num_real].cpu()
-    real_ds = Uint8Dataset(real_images)
-    real_stats = torch_fidelity.calculate_metrics(
-        input1=real_ds,
-        input2=real_ds,
+    real_images_periodic = torch.cat(real_images_periodic)[:args.fid_num_real].cpu()
+    real_ds_periodic = Uint8Dataset(real_images_periodic)
+    
+    print("Calculating statistics for periodic FID evaluation...")
+    real_stats_periodic = torch_fidelity.calculate_metrics(
+        input1=real_ds_periodic,
+        input2=real_ds_periodic,
         batch_size=256,
         fid=True,
         cuda=(device == 'cuda'),
         verbose=False,
         stats=True
     )
+
 
     unet = get_unet(_IMG_SIZE, 3).to(device)
     ema = AveragedModel(unet, multi_avg_fn=get_ema_multi_avg_fn(0.9999))
@@ -211,15 +223,25 @@ def main():
         x0 = imgs.view(imgs.size(0), -1).to(device)
         B = x0.size(0)
 
+        # Sample original time t
         t = torch.rand(B, 1, device=device) * args.T
-        tau = sampler.sample(t.squeeze(1), dim=dim).to(device)
+        
+        # --- Use g(t) for noise process time ---
+        t_for_noise_proc = get_g(t.squeeze(1), args.T, args.g_schedule)
+        
+        # Sample noise using g(t)
+        tau = sampler.sample(t_for_noise_proc, dim=dim).to(device)
+        
+        # Use original t for signal schedule f(t)
         f = get_f(t.squeeze(1), args.T, args.schedule).unsqueeze(1)
         xt = f * x0 + tau
         drift = get_df(t.squeeze(1), args.T, args.schedule).unsqueeze(1) * x0
 
         with torch.no_grad():
-            velo = compute_velocity((xt - f * x0), t, args.a, args.c, epsilon=1e-4)
+            # Compute velocity using g(t)
+            velo = get_dg(t.squeeze(1), args.T, args.g_schedule)*compute_velocity((xt - f * x0), t_for_noise_proc.unsqueeze(1), args.a, args.c, epsilon=1e-4)
 
+        # Model is conditioned on original time t
         pred = unet(xt.view(B, 3, _IMG_SIZE, _IMG_SIZE), t.squeeze(1)).view(B, -1)
         loss = F.mse_loss(pred, velo + drift)
 
@@ -232,7 +254,7 @@ def main():
 
         if (step + 1) % args.eval_interval == 0:
             ema.eval()
-            traj_e = sample_ode(ema, xT_fixed_vis, args.T, 100, device, method='euler')
+            traj_e = sample_ode(ema, xT_fixed_vis, args.T, 100, device, method='euler', max_batch=args.num_samples)
             x_e = traj_e[-1].view(-1, 3, _IMG_SIZE, _IMG_SIZE).cpu()
             grid_e = make_grid(x_e[:64], nrow=8, normalize=True, scale_each=True)
             cpu_e = grid_e.permute(1, 2, 0).numpy()
@@ -250,8 +272,7 @@ def main():
             fakes_e = traj_e[-1].view(args.fid_num_real, 3, _IMG_SIZE, _IMG_SIZE).cpu()
             gen_ds_e = Uint8Dataset(to_uint8_rgb(fakes_e, args.fid_image_size).cpu())
             metrics_e = torch_fidelity.calculate_metrics(
-                input1=real_ds,
-                statistics_real=real_stats,
+                input1_stats=real_stats_periodic,
                 input2=gen_ds_e,
                 batch_size=256,
                 fid=True,
@@ -276,6 +297,55 @@ def main():
             torch.save(unet.state_dict(), os.path.join(save_dir, f'unet_{step+1}.pt'))
 
     print("Training complete.")
+    torch.save(ema.state_dict(), os.path.join(save_dir, 'ema_final.pt'))
+    torch.save(unet.state_dict(), os.path.join(save_dir, 'unet_final.pt'))
+
+    # --- Final FID Evaluation on 50k samples ---
+    print(f"\nStarting final FID evaluation with {args.final_fid_num_samples} samples...")
+    torch.manual_seed(42) # Set new random seed for final evaluation
+
+    ema.eval()
+
+    # 1. Prepare the full 50k real dataset (CIFAR-10 training set)
+    print("Loading all real images for final FID...")
+    # Re-use the train_ds object which contains the full 50k images
+    num_final_real = len(train_ds) if len(train_ds) <= args.final_fid_num_samples else args.final_fid_num_samples
+    
+    all_real_images = []
+    full_loader = DataLoader(train_ds, batch_size=512, shuffle=False)
+    for imgs, _ in tqdm(full_loader, desc="Converting real images to uint8"):
+        all_real_images.append(to_uint8_rgb(imgs, args.fid_image_size))
+    all_real_images_tensor = torch.cat(all_real_images)[:num_final_real]
+    real_ds_final = Uint8Dataset(all_real_images_tensor.cpu())
+
+    # 2. Generate 50k fake samples
+    print(f"Generating {args.final_fid_num_samples} fake images...")
+    t_final = torch.ones(args.final_fid_num_samples, 1, device=device) * args.T
+    xT_final = sampler.sample(t_final.squeeze(1), dim=dim).to(device)
+    traj_final = sample_ode(ema, xT_final, args.T, 100, device, method='euler')
+    final_fakes = traj_final[-1].view(args.final_fid_num_samples, 3, _IMG_SIZE, _IMG_SIZE).cpu()
+    gen_ds_final = Uint8Dataset(to_uint8_rgb(final_fakes, args.fid_image_size).cpu())
+
+    # 3. Calculate final FID
+    print("Calculating final FID score...")
+    final_metrics = torch_fidelity.calculate_metrics(
+        input1=real_ds_final,
+        input2=gen_ds_final,
+        batch_size=128, # Lower batch size for potentially large images
+        fid=True,
+        cuda=(device == 'cuda'),
+        verbose=True,
+    )
+    final_fid = final_metrics['frechet_inception_distance']
+    
+    print("\n-------------------------------------------")
+    print(f"Final FID (Euler, {args.final_fid_num_samples} samples, seed 42): {final_fid:.4f}")
+    print("-------------------------------------------")
+    
+    if args.use_wandb:
+        wandb.log({"final_fid_euler_50k": final_fid})
+        wandb.finish()
+
 
 if __name__ == '__main__':
     main()
