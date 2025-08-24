@@ -47,11 +47,10 @@ class TorchKacConstantSampler:
             exp_fac = np.exp(z - a * t)
 
             term1 = self.beta * exp_fac * i0e(z)
-            ratio = np.where(
-                z > 1e-6,
-                i1e(z) / z,
-                0.5 + (z ** 2) / 16.0 + (z ** 4) / 384.0
-            )
+            small = (z <= 1e-6)
+            ratio = np.empty_like(z)
+            ratio[~small] = i1e(z[~small]) / r[~small]
+            ratio[small] = self.beta * (0.5 + (z[small]**2)/16.0 + (z[small]**4)/384.0) * np.exp(-z[small])
             term2 = self.beta * ct * exp_fac * ratio
             Kz = 0.5 * (term1 + term2)
             f = 2.0 * (Kz / norm) * ct
