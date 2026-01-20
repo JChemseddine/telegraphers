@@ -325,6 +325,8 @@ def main():
             torch.save(unet.state_dict(), os.path.join(save_dir, f'unet_{step+1}.pt'))
 
     print("Training complete.")
+    torch.save(ema.state_dict(), os.path.join(save_dir, 'ema_final.pt'))
+    torch.save(unet.state_dict(), os.path.join(save_dir, 'unet_final.pt'))
 
     # --- Final FID Evaluation on 50k samples ---
     print(f"\nStarting final FID evaluation with {args.final_fid_num_samples} samples...")
