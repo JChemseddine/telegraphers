@@ -109,7 +109,7 @@ python train_diffusion_2d.py --sigma 1.0 --T 1.0
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `--a` | Kac jump rate | 9.0 |
-| `--c` | Kac jump size | 3.0 |
+| `--c` | Kac speed | 3.0 |
 | `--T` | Time horizon | 1.0 |
 | `--sigma` | Noise scale (diffusion/FM) | 1.0 |
 | `--schedule` | Signal schedule (linear/exp/cos/lambda) | linear |
